@@ -7,7 +7,7 @@ import base64
 import logging
 from datetime import datetime
 import anthropic
-from config import ANTHROPIC_API_KEY, CLAUDE_MODEL
+from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, TAX_RATE
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ def _get_client() -> anthropic.Anthropic:
 SYSTEM_PROMPT = """你是 Lulu AI Stock Analyst，专门为美股投资者生成简洁精准的操作参考卡片。
 
 你的输出规则：
-1. 纯文本，不用 markdown 符号（无*、无#、无-）
+1. 纯文本，不用 markdown 符号（无*、无#、无-，挂单计划缩进使用空格）
 2. 严格按照指定格式输出，不加多余内容
 3. 数字精确到小数点后2位
 4. 语言：中文，简洁有力
@@ -44,7 +44,16 @@ RSI：[数值，状态说明]
 Volume：[成交量状态及含义]
 关键支撑：[价格区间1]  /  [价格区间2]  /  [价格区间3]
 关键阻力：[价格区间1]  /  [价格区间2]
-防守：[止损位和触发条件]
+正常目标：$[价格区间]（约 +[X]%–[Y]%，税后约 +[A]%–[B]%）
+乐观目标：$[价格区间]（约 +[X]%–[Y]%，税后约 +[A]%–[B]%）
+明天操作：[具体操作建议，如“挂单”、“观望”、“低吸买入”、“分批建仓”]
+挂单计划：
+  价格1：$[具体挂单价格]，投入 [比例，如30]%，触达概率 [高/中/低]，理由：[简短技术面原因]
+  价格2：$[具体挂单价格]，投入 [比例，如40]%，触达概率 [高/中/低]，理由：[简短技术面原因]
+  价格3：$[具体挂单价格]，投入 [比例，如30]%，触达概率 [高/中/低]，理由：[简短技术面原因]
+止损/失效条件：[说明跌破什么具体价格且放量，或指标如何死叉时短线趋势失效]
+仓位建议：[如：小仓、中仓、重仓、小仓到中仓]
+防守：[原本的止损位和触发条件]
 一句话：[最终操作建议]"""
 
 
@@ -54,6 +63,7 @@ def _build_prompt(stock: dict) -> str:
     pivots = stock.get("pivots", {})
     news = stock.get("news_text", "暂无近期新闻")
     info = stock.get("info", {})
+    tax_percent_str = f"{TAX_RATE * 100:.0f}%"
     symbol = stock["symbol"]
 
     def fmt(v, decimals=2):
@@ -161,6 +171,10 @@ Pivot Points（前一交易日）：
 技术评分参考（供你综合判断）：
   长期趋势初步评分：{stock.get('trend_score', 5)}/10
   当前买点初步评分：{stock.get('entry_score', 5)}/10
+
+税率说明（用于估算税后目标收益）：
+  本账户适用的预计短期资本利得税率为：{tax_percent_str}。
+  计算公式：税后涨幅 % = 税前涨幅 % * (1 - {TAX_RATE:.2f})。请依据此税率计算『正常目标』和『乐观目标』的税后收益率，并严格按照格式模板输出。
 
 请输出该股的 Lulu AI Stock Card，严格按照系统提示中的格式模板。"""
 

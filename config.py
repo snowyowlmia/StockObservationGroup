@@ -8,6 +8,7 @@ FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-opus-4-8")
+TAX_RATE = float(os.getenv("TAX_RATE", "0.30"))
 
 WATCHLIST_FILE = os.path.join(os.path.dirname(__file__), "watchlist.txt")
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output")
