@@ -2,6 +2,8 @@
 Generate Lulu AI Stock Cards via Claude API.
 One API call per stock for maximum analysis quality.
 """
+import os
+import base64
 import logging
 from datetime import datetime
 import anthropic
@@ -170,7 +172,54 @@ def generate_card(stock: dict) -> str:
         )
 
 
+
+def generate_card_with_vision(stock: dict, image_path: str) -> str:
+    """Call Claude with both the stock data and a screenshot of the chart."""
+    try:
+        if not os.path.exists(image_path):
+            logger.error(f"Screenshot path does not exist: {image_path}. Falling back to text-only.")
+            return generate_card(stock)
+            
+        with open(image_path, "rb") as image_file:
+            image_data = base64.b64encode(image_file.read()).decode("utf-8")
+            
+        text_prompt = _build_prompt(stock)
+        # Add visual check instructions to prompt
+        text_prompt += "\n\n【视觉校验要求】：同时参考上传的 TradingView 截图（其中包含 EMA20/50/200 均线、RSI、MACD指标）。比对给定的技术数据与图表形态。如果两者一致，请原样按照模板格式输出卡片；如果视觉图表显示存在明显的趋势背离、均线缠绕、MACD/RSI 拐点偏离或画线阻力支撑差错，请以图表视觉呈现为准修正卡片中『状态』、『买点波段』、『防守』与『一句话』的描述，并在相关部分点出视觉上看到的具体盘面细节（如：价格正处于斐波那契回撤阻力位，或K线出现长下影线等）。确保卡片文字与图片视觉内容相符。"
+
+        client = _get_client()
+        resp = client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=800,
+            system=SYSTEM_PROMPT,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": image_data
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": text_prompt
+                        }
+                    ]
+                }
+            ]
+        )
+        return resp.content[0].text.strip()
+    except Exception as e:
+        logger.error(f"Card generation with vision failed for {stock['symbol']}: {e}. Falling back to text-only.")
+        return generate_card(stock)
+
+
 def build_daily_header(session_label: str) -> str:
+
     """Build the header line for the daily card message."""
     now = datetime.now()
     date_str = now.strftime("%Y-%m-%d")

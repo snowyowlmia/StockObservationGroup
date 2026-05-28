@@ -22,6 +22,11 @@ on:
         required: false
         default: "false"
         type: boolean
+      screenshot:
+        description: "Run TradingView screenshot & Vision validation"
+        required: false
+        default: "true"
+        type: boolean
 
 jobs:
   run-bot:
@@ -41,6 +46,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Install Playwright Chromium
+        run: python -m playwright install chromium
+
       - name: Determine session flag
         id: session
         run: |
@@ -53,8 +61,17 @@ jobs:
       - name: Determine dry-run flag
         id: dryrun
         run: |
-          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
             echo "flag=--dry-run" >> $GITHUB_OUTPUT
+          else
+            echo "flag=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine screenshot flag
+        id: screenshot
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" -a "${{ github.event.inputs.screenshot }}" = "true" ]; then
+            echo "flag=--screenshot" >> $GITHUB_OUTPUT
           else
             echo "flag=" >> $GITHUB_OUTPUT
           fi
@@ -66,7 +83,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
         run: |
-          python main.py ${{ steps.session.outputs.flag }} ${{ steps.dryrun.outputs.flag }}
+          python main.py ${{ steps.session.outputs.flag }} ${{ steps.dryrun.outputs.flag }} ${{ steps.screenshot.outputs.flag }}
 
       - name: Upload output cards
         if: always()

@@ -31,7 +31,8 @@ from src.data_fetcher import fetch_ohlcv, fetch_info
 from src.indicators import compute_indicators, fibonacci_levels, pivot_points, extract_latest
 from src.news_fetcher import get_news, format_news_for_prompt
 from src.scorer import rank_stocks
-from src.card_generator import generate_card, build_daily_header
+from src.card_generator import generate_card, generate_card_with_vision, build_daily_header
+from src.chart_renderer import capture_screenshot
 from src.telegram_sender import send_message
 
 logging.basicConfig(
@@ -135,6 +136,7 @@ def main():
     parser = argparse.ArgumentParser(description="Lulu AI Stock Card Bot")
     parser.add_argument("--session", choices=["open", "mid", "close"], default=None)
     parser.add_argument("--dry-run", action="store_true", help="Print to stdout, skip Telegram")
+    parser.add_argument("--screenshot", action="store_true", help="Generate TradingView screenshots and run AI vision check")
     args = parser.parse_args()
 
     session = args.session or detect_session()
@@ -161,7 +163,17 @@ def main():
     # Generate AI cards (sorted order)
     logger.info("Generating AI cards via Claude...")
     for stock in ranked:
-        stock["card"] = generate_card(stock)
+        if args.screenshot:
+            shot_path = os.path.join(OUTPUT_DIR, "screenshots", f"{stock['symbol']}_{session}.png")
+            exchange = stock.get("info", {}).get("exchange", "")
+            ok = capture_screenshot(stock["symbol"], exchange, shot_path)
+            if ok:
+                stock["card"] = generate_card_with_vision(stock, shot_path)
+            else:
+                logger.warning(f"Screenshot failed for {stock['symbol']}, falling back to text-only card.")
+                stock["card"] = generate_card(stock)
+        else:
+            stock["card"] = generate_card(stock)
         logger.info(f"  ✓ {stock['symbol']}")
 
     # Assemble full message
