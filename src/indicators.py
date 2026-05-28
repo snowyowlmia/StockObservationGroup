@@ -38,6 +38,42 @@ def _bbands(series: pd.Series, period: int, std_dev: float = 2.0):
     return lower, mid, upper
 
 
+def _fib_bands(series: pd.Series, period: int):
+    mid = series.rolling(period).mean()
+    std = series.rolling(period).std(ddof=0)
+    return {
+        "mid": mid,
+        "u1": mid + 1.618 * std,
+        "u2": mid + 2.618 * std,
+        "u3": mid + 4.236 * std,
+        "l1": mid - 1.618 * std,
+        "l2": mid - 2.618 * std,
+        "l3": mid - 4.236 * std,
+    }
+
+
+def _kdj(df: pd.DataFrame, n: int = 9, m1: int = 3, m2: int = 3):
+    low_list = df["Low"].rolling(n).min()
+    high_list = df["High"].rolling(n).max()
+    rsv = (df["Close"] - low_list) / (high_list - low_list) * 100
+    rsv = rsv.fillna(50)
+
+    k = []
+    d = []
+    curr_k = 50.0
+    curr_d = 50.0
+    for val in rsv.values:
+        curr_k = (2.0 / m1) * val + ((m1 - 1.0) / m1) * curr_k
+        curr_d = (1.0 / m2) * curr_k + ((m2 - 1.0) / m2) * curr_d
+        k.append(curr_k)
+        d.append(curr_d)
+
+    k_ser = pd.Series(k, index=df.index)
+    d_ser = pd.Series(d, index=df.index)
+    j_ser = 3.0 * k_ser - 2.0 * d_ser
+    return k_ser, d_ser, j_ser
+
+
 def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """Append all technical indicator columns to df, return df."""
     close = df["Close"]
@@ -53,6 +89,22 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["MACD_Hist"] = macd_hist
 
     df["BB_Lower"], df["BB_Mid"], df["BB_Upper"] = _bbands(close, BB_PERIOD)
+
+    # Fibonacci Bollinger Bands
+    f_bands = _fib_bands(close, BB_PERIOD)
+    df["FibBand_Mid"] = f_bands["mid"]
+    df["FibBand_U1"] = f_bands["u1"]
+    df["FibBand_U2"] = f_bands["u2"]
+    df["FibBand_U3"] = f_bands["u3"]
+    df["FibBand_L1"] = f_bands["l1"]
+    df["FibBand_L2"] = f_bands["l2"]
+    df["FibBand_L3"] = f_bands["l3"]
+
+    # KDJ
+    k_ser, d_ser, j_ser = _kdj(df)
+    df["KDJ_K"] = k_ser
+    df["KDJ_D"] = d_ser
+    df["KDJ_J"] = j_ser
 
     df["Vol_Avg20"] = df["Volume"].rolling(VOLUME_AVG_PERIOD).mean()
     df["Vol_Ratio"] = df["Volume"] / df["Vol_Avg20"]
@@ -132,6 +184,16 @@ def extract_latest(df: pd.DataFrame) -> dict:
         "bb_lower": g("BB_Lower"),
         "bb_mid": g("BB_Mid"),
         "bb_upper": g("BB_Upper"),
+        "fib_band_mid": g("FibBand_Mid"),
+        "fib_band_u1": g("FibBand_U1"),
+        "fib_band_u2": g("FibBand_U2"),
+        "fib_band_u3": g("FibBand_U3"),
+        "fib_band_l1": g("FibBand_L1"),
+        "fib_band_l2": g("FibBand_L2"),
+        "fib_band_l3": g("FibBand_L3"),
+        "kdj_k": g("KDJ_K"),
+        "kdj_d": g("KDJ_D"),
+        "kdj_j": g("KDJ_J"),
         "vol_avg20": int(row.get("Vol_Avg20", 0) or 0),
         "vol_ratio": round(float(row.get("Vol_Ratio", 1.0) or 1.0), 2),
     }

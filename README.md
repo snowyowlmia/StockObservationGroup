@@ -20,7 +20,7 @@ graph TD
         C --> D[量价数据 & 公司信息 & 财报日]
         C --> E[新闻抓取 Finnhub / yfinance]
         D --> F[src/indicators.py]
-        F -->|纯算法计算| G[EMA/RSI/MACD/Bollinger/Fibonacci/Pivots]
+        F -->|纯算法计算| G[EMA/RSI/MACD/KDJ/Bollinger/FibBands/Fibonacci/Pivots]
     end
     
     %% 第二层：视觉渲染与 AI 多模态校验
@@ -45,7 +45,7 @@ graph TD
 
 ### ⚙️ 核心处理流程：
 1. **数据收集**：从 Yahoo Finance 获取实时量价、历史日线数据及公司基本面，读取预计财报发布时间，从 Finnhub/yfinance 获取最新个股新闻。
-2. **量化计算**：计算包括 EMA20/50/200、RSI14、MACD、斐波那契回撤位和 Pivot Points 支撑阻力线等核心指标。
+2. **量化计算**：计算包括 EMA20/50/200、RSI14、MACD、KDJ、布林线与斐波那契通道（Fib Bands）、斐波那契回撤位和 Pivot Points 支撑阻力线等核心指标。
 3. **视觉捕获**：使用 Playwright 启动无头浏览器，渲染包含 TradingView 高清图表和相应指标的本地网页并截取 PNG 图像。
 4. **多模态核对**：将量化文本、新闻背景与图表截图同时输入给 Claude，由其进行双层比对校正。AI 能有效识别出“价格触及斐波那契阻力、K线收长上影线、或均线缠绕”等纯数据难以完全表达的视觉特征，并估算税前/税后收益目标。
 5. **智能分发**：以“图表图片 + 卡片分析配图说明（Caption）”的图文绑定形式，推送至 Telegram。

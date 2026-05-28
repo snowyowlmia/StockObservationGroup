@@ -91,6 +91,21 @@ Pivot Points（前一交易日）：
     bb_upper = ind.get("bb_upper")
     bb_line = f"  Bollinger Bands: Lower ${fmt(bb_lower)}  Upper ${fmt(bb_upper)}" if bb_lower else ""
 
+    fib_band_line = ""
+    fib_band_mid = ind.get("fib_band_mid")
+    if fib_band_mid is not None:
+        fib_band_line = f"""  Fibonacci Bollinger Bands (Fib Bands):
+    Upper3: ${fmt(ind.get('fib_band_u3'))} | Upper2: ${fmt(ind.get('fib_band_u2'))} | Upper1: ${fmt(ind.get('fib_band_u1'))}
+    Middle: ${fmt(fib_band_mid)}
+    Lower1: ${fmt(ind.get('fib_band_l1'))} | Lower2: ${fmt(ind.get('fib_band_l2'))} | Lower3: ${fmt(ind.get('fib_band_l3'))}"""
+
+    kdj_k = ind.get("kdj_k")
+    kdj_d = ind.get("kdj_d")
+    kdj_j = ind.get("kdj_j")
+    kdj_line = ""
+    if kdj_k is not None:
+        kdj_line = f"  KDJ(9,3,3)：K={fmt(kdj_k, 1)}  D={fmt(kdj_d, 1)}  J={fmt(kdj_j, 1)}"
+
     vol_ratio = ind.get("vol_ratio", 1.0)
     vol_desc = "放量" if vol_ratio > 1.3 else ("缩量" if vol_ratio < 0.7 else "正常量")
 
@@ -156,12 +171,14 @@ Pivot Points（前一交易日）：
   RSI(14)：{fmt(rsi, 1)}  （{rsi_state}）
   MACD(12,26,9)：{macd_state}
     MACD值: {fmt(ind.get('macd'), 4)}  信号线: {fmt(ind.get('macd_signal'), 4)}  柱状: {fmt(macd_hist, 4)}
+{kdj_line}
 
 成交量：
   今日量 vs 20日均量：{vol_ratio:.1f}x  （{vol_desc}）
   今日量：{ind.get('volume', 0):,}  20日均量：{ind.get('vol_avg20', 0):,}
 
 {bb_line}
+{fib_band_line}
 {fib_lines}
 {pivot_lines}
 
