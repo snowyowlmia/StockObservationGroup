@@ -18,6 +18,7 @@ import logging
 import os
 import sys
 from datetime import datetime
+from typing import Optional
 from pathlib import Path
 
 import pytz
@@ -73,7 +74,7 @@ def load_watchlist() -> list[str]:
     return symbols
 
 
-def process_symbol(symbol: str) -> dict | None:
+def process_symbol(symbol: str) -> Optional[dict]:
     """Full pipeline for one symbol. Returns data dict or None on failure."""
     logger.info(f"Processing {symbol}...")
 
