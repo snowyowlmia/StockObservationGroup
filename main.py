@@ -123,6 +123,31 @@ def build_full_message(ranked: list[dict], session: str) -> str:
     return "\n".join(parts)
 
 
+def build_summary_message(ranked: list[dict], session_label: str) -> str:
+    header = build_daily_header(session_label)
+    lines = [header, "🔔 今日操作策略速览：\n"]
+
+    for i, stock in enumerate(ranked, 1):
+        emoji = stock.get("urgency_emoji", "")
+        tag = stock.get("action_tag", "")
+        symbol = stock["symbol"]
+        price = stock["indicators"].get("price", "?")
+        chg = stock["indicators"].get("chg_1d_pct", 0)
+        chg_str = f"+{chg:.2f}%" if chg >= 0 else f"{chg:.2f}%"
+
+        card_text = stock.get("card", "")
+        one_liner = "暂无建议"
+        for line in card_text.splitlines():
+            if line.startswith("一句话："):
+                one_liner = line.replace("一句话：", "").strip()
+                break
+
+        lines.append(f"{emoji} #{i} <b>{symbol}</b> (${price} | {chg_str}) — {tag}")
+        lines.append(f"   ▸ {one_liner}\n")
+
+    return "\n".join(lines)
+
+
 def save_output(message: str, session: str) -> None:
     now = datetime.now()
     day_dir = Path(OUTPUT_DIR) / now.strftime("%Y-%m-%d")
@@ -191,9 +216,9 @@ def main():
         print("\n[dry-run] Telegram not sent.")
     else:
         if args.screenshot:
-            # Send session header
-            header = build_daily_header(SESSION_LABELS[session])
-            send_message(header)
+            # Send session header with summary overview
+            summary_msg = build_summary_message(ranked, SESSION_LABELS[session])
+            send_message(summary_msg)
 
             # Send each stock card as a photo with caption
             success = True
