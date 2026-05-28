@@ -1,0 +1,77 @@
+name: Lulu AI Stock Card Bot
+
+on:
+  schedule:
+    # All times UTC — adjusted for EDT (UTC-4)
+    # 09:45 ET = 13:45 UTC
+    - cron: "45 13 * * 1-5"
+    # 13:00 ET = 17:00 UTC
+    - cron: "0 17 * * 1-5"
+    # 15:45 ET = 19:45 UTC
+    - cron: "45 19 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      session:
+        description: "Session to run (open / mid / close)"
+        required: false
+        default: "open"
+        type: choice
+        options: [open, mid, close]
+      dry_run:
+        description: "Dry run (no Telegram)"
+        required: false
+        default: "false"
+        type: boolean
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Determine session flag
+        id: session
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "flag=--session ${{ github.event.inputs.session }}" >> $GITHUB_OUTPUT
+          else
+            echo "flag=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine dry-run flag
+        id: dryrun
+        run: |
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            echo "flag=--dry-run" >> $GITHUB_OUTPUT
+          else
+            echo "flag=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run stock card bot
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+        run: |
+          python main.py ${{ steps.session.outputs.flag }} ${{ steps.dryrun.outputs.flag }}
+
+      - name: Upload output cards
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stock-cards-${{ github.run_id }}
+          path: output/
+          retention-days: 30
