@@ -35,6 +35,7 @@ SYSTEM_PROMPT = """你是 Lulu AI Stock Analyst，专门为美股投资者生成
 状态：[一句话当前状态]
 买点波段：[当前处于第几波或哪种形态]
 AI层：[该股在AI产业链的层级定位]
+下季财报：[日期及倒计时备注，如“2026-08-27（还有 90 天）”，“已于 3 天前发布”或“暂无数据”]
 综合评分：[X/10]
 长期趋势：[X/10]
 当前买点：[X/10]
@@ -116,12 +117,26 @@ Pivot Points（前一交易日）：
     industry = info.get("industry", "")
     company = info.get("name", symbol)
 
+    earnings_date = info.get("earnings_date", "")
+    days_to_earnings = info.get("days_to_earnings")
+    earnings_info = "暂无数据"
+    if earnings_date:
+        earnings_info = f"{earnings_date}"
+        if days_to_earnings is not None:
+            if days_to_earnings > 0:
+                earnings_info += f"（还有 {days_to_earnings} 天）"
+            elif days_to_earnings == 0:
+                earnings_info += "（今日财报！）"
+            else:
+                earnings_info += f"（已于 {-days_to_earnings} 天前发布）"
+
     chg_sign = "+" if ind.get("chg_1d_pct", 0) >= 0 else ""
 
     return f"""分析以下股票，生成一张 Lulu AI Stock Card：
 
 股票：{symbol}  公司：{company}
 板块：{sector} / {industry}
+下季财报：{earnings_info}
 当前价格：${fmt(ind.get('price'))}  （今日{chg_sign}{fmt(ind.get('chg_1d_pct'))}%  本周{'+' if (ind.get('chg_5d_pct') or 0) >= 0 else ''}{fmt(ind.get('chg_5d_pct'))}%）
 
 移动均线：

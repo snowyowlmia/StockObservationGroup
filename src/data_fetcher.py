@@ -28,15 +28,37 @@ def fetch_info(symbol: str) -> dict:
     """Return a dict with sector/industry/company name from yfinance."""
     try:
         info = yf.Ticker(symbol).info
+        earnings_ts = info.get("earningsTimestampStart") or info.get("earningsTimestamp")
+        earnings_date_str = ""
+        days_to_earnings = None
+        if earnings_ts:
+            try:
+                from datetime import datetime, date
+                earnings_date_obj = datetime.utcfromtimestamp(earnings_ts).date()
+                earnings_date_str = earnings_date_obj.strftime("%Y-%m-%d")
+                days_to_earnings = (earnings_date_obj - date.today()).days
+            except Exception:
+                pass
+
         return {
             "name": info.get("shortName", symbol),
             "sector": info.get("sector", ""),
             "industry": info.get("industry", ""),
             "market_cap": info.get("marketCap", 0),
             "exchange": info.get("exchange", ""),
+            "earnings_date": earnings_date_str,
+            "days_to_earnings": days_to_earnings,
         }
     except Exception:
-        return {"name": symbol, "sector": "", "industry": "", "market_cap": 0, "exchange": ""}
+        return {
+            "name": symbol,
+            "sector": "",
+            "industry": "",
+            "market_cap": 0,
+            "exchange": "",
+            "earnings_date": "",
+            "days_to_earnings": None,
+        }
 
 
 def fetch_yf_news(symbol: str, max_items: int = 5) -> list[dict]:

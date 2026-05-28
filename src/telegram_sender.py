@@ -32,6 +32,35 @@ def send_message(text: str, parse_mode: str = "HTML") -> bool:
     return ok
 
 
+def send_photo(photo_path: str, caption: str, parse_mode: str = "HTML") -> bool:
+    """Send a photo with caption to the configured Telegram chat."""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        logger.warning("Telegram not configured — printing to stdout instead")
+        print(f"[Photo: {photo_path}]")
+        print(caption)
+        return True
+
+    # Caption limit is 1024 characters for Telegram photos
+    if len(caption) > 1020:
+        caption = caption[:1017] + "..."
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+    try:
+        with open(photo_path, "rb") as photo_file:
+            resp = requests.post(
+                url,
+                data={"chat_id": TELEGRAM_CHAT_ID, "caption": caption, "parse_mode": parse_mode},
+                files={"photo": photo_file},
+                timeout=30,
+            )
+            resp.raise_for_status()
+        return True
+    except Exception as e:
+        logger.error(f"Telegram send photo failed: {e}")
+        # Fallback to text message
+        return send_message(f"[图表发送失败]\n\n{caption}", parse_mode)
+
+
 def _split(text: str) -> list[str]:
     """Split text into chunks that fit Telegram's size limit."""
     if len(text) <= MAX_LENGTH:

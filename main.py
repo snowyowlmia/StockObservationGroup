@@ -33,7 +33,7 @@ from src.news_fetcher import get_news, format_news_for_prompt
 from src.scorer import rank_stocks
 from src.card_generator import generate_card, generate_card_with_vision, build_daily_header
 from src.chart_renderer import capture_screenshot
-from src.telegram_sender import send_message
+from src.telegram_sender import send_message, send_photo
 
 logging.basicConfig(
     level=logging.INFO,
@@ -169,6 +169,7 @@ def main():
             ok = capture_screenshot(stock["symbol"], exchange, shot_path)
             if ok:
                 stock["card"] = generate_card_with_vision(stock, shot_path)
+                stock["shot_path"] = shot_path
             else:
                 logger.warning(f"Screenshot failed for {stock['symbol']}, falling back to text-only card.")
                 stock["card"] = generate_card(stock)
@@ -189,12 +190,48 @@ def main():
         print("=" * 60)
         print("\n[dry-run] Telegram not sent.")
     else:
-        success = send_message(message)
-        if success:
-            logger.info("Telegram message sent successfully.")
+        if args.screenshot:
+            # Send session header
+            header = build_daily_header(SESSION_LABELS[session])
+            send_message(header)
+
+            # Send each stock card as a photo with caption
+            success = True
+            for i, stock in enumerate(ranked, 1):
+                emoji = stock.get("urgency_emoji", "")
+                tag = stock.get("action_tag", "")
+                symbol = stock["symbol"]
+                price = stock["indicators"].get("price", "?")
+                chg = stock["indicators"].get("chg_1d_pct", 0)
+                chg_str = f"+{chg:.2f}%" if chg >= 0 else f"{chg:.2f}%"
+
+                card_title = f"{emoji} #{i}  {tag}  ▸  {symbol} ${price} ({chg_str})\n"
+                caption = card_title + stock["card"]
+
+                shot_path = stock.get("shot_path")
+                if shot_path and os.path.exists(shot_path):
+                    ok = send_photo(shot_path, caption)
+                else:
+                    ok = send_message(caption)
+                if not ok:
+                    success = False
+
+            # Send footer
+            footer = f"\n{'═' * 42}\n共分析 {len(ranked)} 支股票  |  by Lulu AI Stock Bot"
+            send_message(footer)
+
+            if success:
+                logger.info("Telegram photo messages sent successfully.")
+            else:
+                logger.error("Some Telegram photo messages failed to send.")
+                sys.exit(1)
         else:
-            logger.error("Telegram send failed.")
-            sys.exit(1)
+            success = send_message(message)
+            if success:
+                logger.info("Telegram message sent successfully.")
+            else:
+                logger.error("Telegram send failed.")
+                sys.exit(1)
 
 
 if __name__ == "__main__":
