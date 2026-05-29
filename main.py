@@ -62,21 +62,31 @@ def detect_session() -> str:
         return "close"
 
 
-def load_watchlist() -> list[str]:
+def load_watchlist() -> list[dict]:
     path = Path(WATCHLIST_FILE)
     if not path.exists():
         logger.error(f"watchlist.txt not found at {WATCHLIST_FILE}")
         sys.exit(1)
-    symbols = [line.strip().upper() for line in path.read_text().splitlines() if line.strip() and not line.startswith("#")]
+    
+    symbols = []
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            parts = line.split(",")
+            sym = parts[0].strip().upper()
+            tag = parts[1].strip() if len(parts) > 1 else ""
+            symbols.append({"symbol": sym, "tag": tag})
+            
     if not symbols:
         logger.error("watchlist.txt is empty")
         sys.exit(1)
-    logger.info(f"Watchlist: {symbols}")
+    logger.info(f"Watchlist: {[s['symbol'] for s in symbols]}")
     return symbols
 
 
-def process_symbol(symbol: str) -> Optional[dict]:
+def process_symbol(item: dict) -> Optional[dict]:
     """Full pipeline for one symbol. Returns data dict or None on failure."""
+    symbol = item["symbol"]
     logger.info(f"Processing {symbol}...")
 
     df = fetch_ohlcv(symbol)
@@ -93,6 +103,7 @@ def process_symbol(symbol: str) -> Optional[dict]:
 
     return {
         "symbol": symbol,
+        "category_tag": item["tag"],
         "indicators": ind,
         "fib": fib,
         "pivots": pivots,
@@ -128,12 +139,13 @@ def build_summary_message(ranked: list[dict], session_label: str) -> str:
     lines = [header, "🔔 今日操作策略速览：\n"]
 
     for i, stock in enumerate(ranked, 1):
-        emoji = stock.get("urgency_emoji", "")
-        tag = stock.get("action_tag", "")
         symbol = stock["symbol"]
         price = stock["indicators"].get("price", "?")
         chg = stock["indicators"].get("chg_1d_pct", 0)
         chg_str = f"+{chg:.2f}%" if chg >= 0 else f"{chg:.2f}%"
+        
+        category = stock.get("category_tag", "")
+        cat_str = f"[{category}]" if category else ""
 
         card_text = stock.get("card", "")
         one_liner = "暂无建议"
@@ -142,8 +154,10 @@ def build_summary_message(ranked: list[dict], session_label: str) -> str:
                 one_liner = line.replace("一句话：", "").strip()
                 break
 
-        lines.append(f"{emoji} #{i} <b>{symbol}</b> (${price} | {chg_str}) — {tag}")
-        lines.append(f"   ▸ {one_liner}\n")
+        # 极简排版 (带 Emoji 和分数)
+        emoji = stock.get("urgency_emoji", "")
+        entry_score = stock.get("entry_score", 0)
+        lines.append(f"{emoji} <code>{i:02d}. {cat_str:<6} {symbol:<5} | 买点:{entry_score:<3.1f} | {one_liner}</code>")
 
     return "\n".join(lines)
 
@@ -162,21 +176,26 @@ def main():
     parser.add_argument("--session", choices=["open", "mid", "close"], default=None)
     parser.add_argument("--dry-run", action="store_true", help="Print to stdout, skip Telegram")
     parser.add_argument("--screenshot", action="store_true", help="Generate TradingView screenshots and run AI vision check")
+    parser.add_argument("--symbol", type=str, help="Analyze only a specific symbol (e.g. VRT)")
+    parser.add_argument("--force-vision", action="store_true", help="Force high-end Vision model even if not Top 5 (used with --symbol)")
     args = parser.parse_args()
 
     session = args.session or detect_session()
     logger.info(f"Session: {SESSION_LABELS[session]}")
 
-    symbols = load_watchlist()
+    if args.symbol:
+        symbols = [{"symbol": args.symbol.upper(), "tag": "单股查阅"}]
+    else:
+        symbols = load_watchlist()
 
     # Fetch and process all symbols
     stock_data = []
-    for sym in symbols:
-        result = process_symbol(sym)
+    for item in symbols:
+        result = process_symbol(item)
         if result:
             stock_data.append(result)
         else:
-            logger.warning(f"Skipping {sym} (no data)")
+            logger.warning(f"Skipping {item['symbol']} (no data)")
 
     if not stock_data:
         logger.error("No valid stock data retrieved. Aborting.")
@@ -187,8 +206,12 @@ def main():
 
     # Generate AI cards (sorted order)
     logger.info("Generating AI cards via Claude...")
-    for stock in ranked:
-        if args.screenshot:
+    for i, stock in enumerate(ranked):
+        # Force vision/high-end model if explicitly requested via args
+        is_top_5 = i < 5 or args.force_vision
+        use_cheap = not is_top_5
+        
+        if args.screenshot and is_top_5:
             shot_path = os.path.join(OUTPUT_DIR, "screenshots", f"{stock['symbol']}_{session}.png")
             exchange = stock.get("info", {}).get("exchange", "")
             ok = capture_screenshot(stock["symbol"], exchange, shot_path)
@@ -197,10 +220,10 @@ def main():
                 stock["shot_path"] = shot_path
             else:
                 logger.warning(f"Screenshot failed for {stock['symbol']}, falling back to text-only card.")
-                stock["card"] = generate_card(stock)
+                stock["card"] = generate_card(stock, use_cheap_model=use_cheap)
         else:
-            stock["card"] = generate_card(stock)
-        logger.info(f"  ✓ {stock['symbol']}")
+            stock["card"] = generate_card(stock, use_cheap_model=use_cheap)
+        logger.info(f"  ✓ {stock['symbol']} (Top 5: {is_top_5})")
 
     # Assemble full message
     message = build_full_message(ranked, session)
@@ -223,6 +246,9 @@ def main():
             # Send each stock card as a photo with caption
             success = True
             for i, stock in enumerate(ranked, 1):
+                if i > 5:
+                    break  # Limit detailed cards to Top 5
+                    
                 emoji = stock.get("urgency_emoji", "")
                 tag = stock.get("action_tag", "")
                 symbol = stock["symbol"]

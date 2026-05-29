@@ -127,19 +127,42 @@ def fibonacci_levels(df: pd.DataFrame) -> dict:
 
 
 def pivot_points(df: pd.DataFrame) -> dict:
-    if len(df) < 2:
+    if len(df) < 20:
         return {}
-    prev = df.iloc[-2]
-    H, L, C = prev["High"], prev["Low"], prev["Close"]
+    
+    # Calculate Monthly Fibonacci Pivots
+    df_ym = df.copy()
+    df_ym['YearMonth'] = df_ym.index.to_period('M')
+    current_ym = df_ym.index[-1].to_period('M')
+    prev_months = df_ym[df_ym['YearMonth'] < current_ym]
+    
+    if prev_months.empty:
+        # Fallback to daily if not enough data
+        prev = df.iloc[-2]
+        H, L, C = prev["High"], prev["Low"], prev["Close"]
+    else:
+        last_completed_ym = prev_months['YearMonth'].max()
+        prev_month_data = df_ym[df_ym['YearMonth'] == last_completed_ym]
+        H = prev_month_data["High"].max()
+        L = prev_month_data["Low"].min()
+        C = prev_month_data["Close"].iloc[-1]
+        
+    # Convert back to float scalar if needed
+    if isinstance(H, pd.Series): H = H.item()
+    if isinstance(L, pd.Series): L = L.item()
+    if isinstance(C, pd.Series): C = C.item()
+        
     P = (H + L + C) / 3
+    diff = H - L
+    
     return {
         "P": round(P, 2),
-        "R1": round(2 * P - L, 2),
-        "R2": round(P + (H - L), 2),
-        "R3": round(H + 2 * (P - L), 2),
-        "S1": round(2 * P - H, 2),
-        "S2": round(P - (H - L), 2),
-        "S3": round(L - 2 * (H - P), 2),
+        "R1": round(P + 0.382 * diff, 2),
+        "R2": round(P + 0.618 * diff, 2),
+        "R3": round(P + 1.000 * diff, 2),
+        "S1": round(P - 0.382 * diff, 2),
+        "S2": round(P - 0.618 * diff, 2),
+        "S3": round(P - 1.000 * diff, 2),
     }
 
 

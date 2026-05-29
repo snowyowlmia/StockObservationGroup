@@ -97,22 +97,42 @@ def urgency_label(trend: float, entry: float) -> tuple[str, str]:
 def rank_stocks(stock_data: list[dict]) -> list[dict]:
     """
     Score and sort all stocks by urgency (most actionable first).
-    Each item in stock_data must have keys: symbol, indicators (flat dict).
+    Each item in stock_data must have keys: symbol, indicators (flat dict), info (dict).
     Returns sorted list with added keys: trend_score, entry_score, urgency_emoji, action_tag.
     """
     results = []
     for item in stock_data:
         ind = item.get("indicators", {})
+        info = item.get("info", {})
         trend = score_trend(ind)
         entry = score_entry(ind)
         emoji, tag = urgency_label(trend, entry)
+        
+        # Event-driven bonuses to force stocks into Top 5
+        event_bonus = 0.0
+        
+        # 1. Earnings within 3 days
+        days_to_earnings = info.get("days_to_earnings")
+        if days_to_earnings is not None and 0 <= days_to_earnings <= 3:
+            event_bonus += 3.0
+            tag = "财报临近"
+            emoji = "🔥"
+            
+        # 2. Extreme volume spike (> 2.5x avg)
+        vol_ratio = ind.get("vol_ratio", 1.0)
+        if vol_ratio > 2.5:
+            event_bonus += 2.0
+            if not (days_to_earnings is not None and 0 <= days_to_earnings <= 3):
+                tag = "巨量异动"
+                emoji = "🚀"
+
         results.append({
             **item,
             "trend_score": trend,
             "entry_score": entry,
             "urgency_emoji": emoji,
             "action_tag": tag,
-            "_sort_key": entry * 0.6 + trend * 0.4,
+            "_sort_key": (entry * 0.6 + trend * 0.4) + event_bonus,
         })
 
     results.sort(key=lambda x: x["_sort_key"], reverse=True)

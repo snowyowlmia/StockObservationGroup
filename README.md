@@ -1,145 +1,120 @@
-# 📊 Lulu AI Stock Card Bot
+# 📊 Lulu AI Stock Card Bot (Mega Watchlist Edition)
 
-**Lulu AI Stock Card Bot** 是一个智能美股量化分析与交易决策助手。它能够在每个工作日的关键交易时段（开盘、盘中、收盘前）自动拉取美股行情数据，计算全套技术指标，抓取最新市场新闻，并自动生成高清 TradingView 图表截图。最后，系统利用大语言模型（Claude）进行多模态视觉核对与综合分析，生成结构化、图文并茂的“Lulu 股票卡片”推送到您的 Telegram 频道或群聊中。
+**Lulu AI Stock Card Bot** 是一个专为美股投资者设计的智能量化分析与交易决策助手。它能够在交易时段（开盘、盘中、收盘前）自动拉取美股数据，计算技术指标，抓取新闻，并生成高清 TradingView 截图。
+
+本版本专为 **50+ 只股票的 Mega Watchlist** 打造，创新性地引入了 **Python 极速筛选 + 大模型混合架构 (Hybrid Model)**，能在兼顾成本（每月低至 $6）的前提下，实现极高水准的 AI 图文看盘。
 
 ---
 
-## 🗺️ 系统原理图 (Architecture)
+## 🗺️ 系统原理与大模型混合架构 (Hybrid Architecture)
 
-以下是该项目的核心数据流与架构原理：
+为了解决 API Token 成本和信息过载问题，系统采取了以下架构：
 
 ```mermaid
 graph TD
-    %% 股票池与触发
-    A[watchlist.txt 股票池] -->|读取列表| B[main.py 主控制程序]
-    Cron[GitHub Actions / Local Cron] -->|定时触发| B
+    A[watchlist.txt 50只股票池] -->|定时触发| B[main.py 主程序]
     
-    %% 第一层：数据拉取与计算
-    subgraph Layer1 [第一层：量化指标计算与基本面收集]
-        B --> C[yf.Ticker 数据拉取]
-        C --> D[量价数据 & 公司信息 & 财报日]
-        C --> E[新闻抓取 Finnhub / yfinance]
-        D --> F[src/indicators.py]
-        F -->|纯算法计算| G[EMA/RSI/MACD/KDJ/Bollinger/FibBands/Fibonacci/Pivots]
+    subgraph 第一层：极速初筛与排名 (Python)
+        B --> C[拉取 OHLCV / 计算 EMA, MACD, RSI]
+        C --> D[scorer.py 量化打分]
+        D -->|计算: 趋势 + 买点 + 财报/异动加权| E[生成 Urgent Ranking]
     end
     
-    %% 第二层：视觉渲染与 AI 多模态校验
-    subgraph Layer2 [第二层：视觉渲染与大模型多模态校验]
-        B -->|启用 --screenshot| H[src/chart_renderer.py]
-        H -->|动态生成 Widget HTML| I[Playwright Headless 渲染]
-        I -->|保存截图| J[output/screenshots/ 图像]
-        
-        G -->|量化文本数据| K[src/card_generator.py]
-        E -->|新闻背景数据| K
-        J -->|图表视觉输入| K
-        
-        K -->|Data + Image Base64| L[Claude 3.5 Sonnet 多模态分析]
-        L -->|纠正数据背离 / 生成操作卡片| M[最终 Lulu AI 股票卡片]
+    subgraph 第二层：混合大模型架构 (Hybrid Model)
+        E -->|Top 1-5 名| F[截图 + Claude 3.5 Sonnet 多模态深扒]
+        E -->|第 6-50 名| G[纯量化数据 + Claude 3 Haiku 极速汇总]
     end
     
-    %% 输出与发送
-    B -->|合并与输出| N[保存本地 output/]
-    M -->|图文绑定推送: Photo + Caption| O[Telegram API]
-    O -->|推送给用户| User[Telegram 客户端查看]
+    F --> H[组合为极简带 Tag 的 Summary + Top 5 详情卡片]
+    G --> H
+    H -->|推送| I[Telegram 群组]
 ```
 
-### ⚙️ 核心处理流程：
-1. **数据收集**：从 Yahoo Finance 获取实时量价、历史日线数据及公司基本面，读取预计财报发布时间，从 Finnhub/yfinance 获取最新个股新闻。
-2. **量化计算**：计算包括 EMA20/50/200、RSI14、MACD、KDJ、布林线与斐波那契通道（Fib Bands）、斐波那契回撤位和 Pivot Points 支撑阻力线等核心指标。
-3. **视觉捕获**：使用 Playwright 启动无头浏览器，渲染包含 TradingView 高清图表和相应指标的本地网页并截取 PNG 图像。
-4. **多模态核对**：将量化文本、新闻背景与图表截图同时输入给 Claude，由其进行双层比对校正。AI 能有效识别出“价格触及斐波那契阻力、K线收长上影线、或均线缠绕”等纯数据难以完全表达的视觉特征，并估算税前/税后收益目标。
-5. **智能分发**：以“图表图片 + 卡片分析配图说明（Caption）”的图文绑定形式，推送至 Telegram。
+### 🧠 混合大模型策略 (Cost Optimization)
+所有的数学指标（EMA, MACD, 财报日, 税后收益估算）均由 Python 精准算出，绝不依赖大模型。大模型仅负责语言理解与形态归纳：
+- **前 5 名（Top 5 Actionable）**：自动调用最聪明的 `Claude 3.5 Sonnet`，搭配高管 TradingView 截图进行**视觉核对**。
+- **后 45 名（Observation）**：自动调用超快且极便宜的 `Claude 3 Haiku`，仅生成文字一句话建议，不上报截图。
+
+---
+
+## 🏆 排名引擎逻辑 (Scoring Engine)
+
+**系统并不依赖大模型进行排名**，而是由 `src/scorer.py` 免费、瞬间完成 50 只股票的筛选，确保最有操作价值的股票进入 Top 5：
+
+1. **买点得分 (Entry Score, 60%)**：
+   - 价格正好回踩触及 EMA20 / EMA50 支撑位（大幅加分）。
+   - MACD 刚刚金叉或动能转多（大幅加分）。
+   - RSI 跌入极度超卖区间（加分）；若极度超买（扣分）。
+2. **长线趋势 (Trend Score, 40%)**：
+   - 价格站在 EMA200/100/50 之上，证明多头排列健康。
+3. **⭐事件驱动权重 (Event-Driven Bonus, 强制抢占 Top 5)**：
+   - **财报临近**：如果某只股票在 **未来 3 天内** 发财报，直接 +3 分，强制送入 Top 5，带上 🔥 标签。
+   - **巨量异动**：如果今天成交量超过平时 **2.5 倍**，直接 +2 分，强制送入 Top 5，带上 🚀 标签。
 
 ---
 
 ## 🎯 核心 AI 提示词 (System Prompt)
 
-以下是系统用于生成股票卡片的 Claude System Prompt，规定了卡片的输出结构、分析维度和操作模板：
+系统采用严苛的提示词模板，倒逼大模型生成可以直接挂单的“交易计划”，而非模糊的废话：
 
 ```text
 你是 Lulu AI Stock Analyst，专门为美股投资者生成简洁精准的操作参考卡片。
-
-你的输出规则：
-1. 纯文本，不用 markdown 符号（无*、无#、无-，挂单计划缩进使用空格）
-2. 严格按照指定格式输出，不加多余内容
-3. 数字精确到小数点后2位
-4. 语言：中文，简洁有力
-5. 一句话建议必须直接说操作建议，不废话
 
 格式模板（每行必须有，顺序不变）：
 [SYMBOL]（$[价格]  [涨跌幅]%）
 状态：[一句话当前状态]
 买点波段：[当前处于第几波或哪种形态]
 AI层：[该股在AI产业链的层级定位]
-下季财报：[日期及倒计时备注，如“2026-08-27（还有 90 天）”，“已于 3 天前发布”或“暂无数据”]
-综合评分：[X/10]
-长期趋势：[X/10]
-当前买点：[X/10]
-MACD：[状态描述]
-RSI：[数值，状态说明]
-Volume：[成交量状态及含义]
-关键支撑：[价格区间1]  /  [价格区间2]  /  [价格区间3]
-关键阻力：[价格区间1]  /  [价格区间2]
-正常目标：$[价格区间]（约 +[X]%–[Y]%，税后约 +[A]%–[B]%）
-乐观目标：$[价格区间]（约 +[X]%–[Y]%，税后约 +[A]%–[B]%）
-明天操作：[具体操作建议，如“挂单”、“观望”、“低吸买入”、“分批建仓”]
+下季财报：[日期及倒计时]
+综合评分：[X/10] 
+长期趋势：[X/10] 当前买点：[X/10]
+MACD：[状态] | RSI：[数值] | Volume：[状态]
+关键支撑：[区间] | 关键阻力：[区间]
+正常目标：$[价格]（约 +[X]%，税后约 +[A]%）
+乐观目标：$[价格]（约 +[Y]%，税后约 +[B]%）
+明天操作：[挂单/观望/低吸/分批]
 挂单计划：
-  价格1：$[具体挂单价格]，投入 [比例，如30]%，触达概率 [高/中/低]，理由：[简短技术面原因]
-  价格2：$[具体挂单价格]，投入 [比例，如40]%，触达概率 [高/中/低]，理由：[简短技术面原因]
-  价格3：$[具体挂单价格]，投入 [比例，如30]%，触达概率 [高/中/低]，理由：[简短技术面原因]
-止损/失效条件：[说明跌破什么具体价格且放量，或指标如何死叉时短线趋势失效]
-仓位建议：[如：小仓、中仓、重仓、小仓到中仓]
-防守：[原本的止损位和触发条件]
-一句话：[最终操作建议]
+  价格1：$[挂单价]，投入 30%，触达概率 [高/中/低]，理由：[技术面原因]
+  价格2：$[挂单价]，投入 40%，触达概率 [高/中/低]，理由：[技术面原因]
+  价格3：$[挂单价]，投入 30%，触达概率 [高/中/低]，理由：[技术面原因]
+止损/失效条件：[跌破某价格且放量]
+仓位建议：[仓位大小]
+防守：[触发条件]
+一句话：[最终操作建议，必须包含具体挂单或防守的价格数字，如：挂单 $200.40 (EMA50)]
 ```
 
 ---
 
-## 🛠️ 快速上手
+## 🛠️ 快速上手与 GitHub 自动化
 
-### 1. 配置环境
+### 1. 准备您的 Watchlist
+在 `watchlist.txt` 中写入您关注的股票及对应 Tag，例如：
+```text
+NVDA,核心底仓
+VRT,AI基建
+APLD,AI高弹性
+```
 
-在项目根目录下创建 `.env` 文件并填入您的配置：
+### 2. 配置环境 (.env / GitHub Secrets)
+必须配置以下环境变量（本地放在 `.env`，GitHub 上放在 **Settings -> Secrets and variables -> Actions**）：
 
 ```env
-# Anthropic Claude API 密钥
 ANTHROPIC_API_KEY=your_anthropic_api_key
-
-# Telegram 机器人配置
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 TELEGRAM_CHAT_ID=your_telegram_chat_id
-
-# 预计短期利得税税率（用于自动计算税后预期收益率）
-TAX_RATE=0.30
-
-# 可选：Finnhub 新闻 API 密钥 (https://finnhub.io)
-FINNHUB_API_KEY=your_finnhub_key
-
-# 可选：指定 Claude 模型（默认：claude-opus-4-8）
-CLAUDE_MODEL=claude-opus-4-8
+# 推荐填入以下两项以开启双模型省钱架构：
+CLAUDE_MODEL=claude-sonnet-4-6
+CLAUDE_MODEL_CHEAP=claude-haiku-4-5-20251001
 ```
 
-### 2. 安装依赖并启动浏览器服务
+### 3. GitHub Actions 自动部署
+由于包含了浏览器内核下载，直接在 GitHub Actions 上运行是最稳定且免费的。
+在完成代码修改后，只需运行以下终端命令即可将代码推送到云端开启自动化：
 
 ```bash
-# 安装 Python 依赖包
-pip install -r requirements.txt
-
-# 下载 Playwright 所需的 Chromium 浏览器内核
-python -m playwright install chromium
+git add .
+git commit -m "Upgrade to Mega Watchlist with Hybrid Models and Top 5 truncating"
+git push origin claude/lulu-stock-card-bot-VEOLw
 ```
 
-### 3. 本地运行
-
-* **仅测试指标与逻辑**（不生成截图，不发送 Telegram）：
-  ```bash
-  python test_mrvl.py
-  ```
-* **全股票列表 dry-run 测试**（自动截图并校验，仅控制台打印结果，不发 Telegram）：
-  ```bash
-  python main.py --dry-run --screenshot
-  ```
-* **真实推送至 Telegram**（将每一只股票的图表截图和卡片以“图文绑定”的形式发往 Telegram）：
-  ```bash
-  python main.py --session open --screenshot
-  ```
+配置好 Secret 后，GitHub 会在每个工作日的美东时间 `9:45`、`13:00`、`15:45` 自动触发！

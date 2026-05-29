@@ -7,7 +7,7 @@ import base64
 import logging
 from datetime import datetime
 import anthropic
-from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, TAX_RATE
+from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, CLAUDE_MODEL_CHEAP, TAX_RATE
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,7 @@ SYSTEM_PROMPT = """你是 Lulu AI Stock Analyst，专门为美股投资者生成
 状态：[一句话当前状态]
 买点波段：[当前处于第几波或哪种形态]
 AI层：[该股在AI产业链的层级定位]
+市值与弹性：[例如：1250亿大盘股，盘子重拉升慢 / 30亿小盘股，高弹性资金易推升]
 下季财报：[日期及倒计时备注，如“2026-08-27（还有 90 天）”，“已于 3 天前发布”或“暂无数据”]
 综合评分：[X/10]
 长期趋势：[X/10]
@@ -54,7 +55,9 @@ Volume：[成交量状态及含义]
 止损/失效条件：[说明跌破什么具体价格且放量，或指标如何死叉时短线趋势失效]
 仓位建议：[如：小仓、中仓、重仓、小仓到中仓]
 防守：[原本的止损位和触发条件]
-一句话：[最终操作建议]"""
+一句话：[最终操作建议，必须包含具体挂单或防守的价格数字，如：挂单 $200.40 (EMA50)]
+
+【特别注意】：如果技术评分中的『当前买点初步评分』大于等于 6.0 分，意味着系统量化判定目前是一个极佳的买入窗口（如深度回踩均线或极度超卖）。此时，你的『明天操作』和『一句话』必须明确给出积极的【买入/建仓】建议，不要一味劝退或观望！"""
 
 
 def _build_prompt(stock: dict) -> str:
@@ -141,6 +144,16 @@ Pivot Points（前一交易日）：
     sector = info.get("sector", "")
     industry = info.get("industry", "")
     company = info.get("name", symbol)
+    market_cap = info.get("market_cap", 0)
+    
+    market_cap_str = "未知"
+    if market_cap:
+        if market_cap >= 1e12:
+            market_cap_str = f"{market_cap / 1e12:.2f} 万亿美元"
+        elif market_cap >= 1e8:
+            market_cap_str = f"{market_cap / 1e8:.2f} 亿美元"
+        else:
+            market_cap_str = f"${market_cap:,.0f}"
 
     earnings_date = info.get("earnings_date", "")
     days_to_earnings = info.get("days_to_earnings")
@@ -161,6 +174,7 @@ Pivot Points（前一交易日）：
 
 股票：{symbol}  公司：{company}
 板块：{sector} / {industry}
+市值：{market_cap_str}
 下季财报：{earnings_info}
 当前价格：${fmt(ind.get('price'))}  （今日{chg_sign}{fmt(ind.get('chg_1d_pct'))}%  本周{'+' if (ind.get('chg_5d_pct') or 0) >= 0 else ''}{fmt(ind.get('chg_5d_pct'))}%）
 
@@ -196,14 +210,15 @@ Pivot Points（前一交易日）：
 请输出该股的 Lulu AI Stock Card，严格按照系统提示中的格式模板。"""
 
 
-def generate_card(stock: dict) -> str:
+def generate_card(stock: dict, use_cheap_model: bool = False) -> str:
     """Call Claude and return the formatted card text."""
     try:
         prompt = _build_prompt(stock)
         client = _get_client()
+        model_to_use = CLAUDE_MODEL_CHEAP if use_cheap_model else CLAUDE_MODEL
         resp = client.messages.create(
-            model=CLAUDE_MODEL,
-            max_tokens=600,
+            model=model_to_use,
+            max_tokens=1200,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -236,7 +251,7 @@ def generate_card_with_vision(stock: dict, image_path: str) -> str:
         client = _get_client()
         resp = client.messages.create(
             model=CLAUDE_MODEL,
-            max_tokens=800,
+            max_tokens=1200,
             system=SYSTEM_PROMPT,
             messages=[
                 {
