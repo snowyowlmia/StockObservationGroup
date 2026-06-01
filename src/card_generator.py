@@ -296,6 +296,50 @@ def generate_card_with_vision(stock: dict, image_path: str, session: str = "clos
         return generate_card(stock)
 
 
+def generate_cio_summary(groups: dict, session: str) -> str:
+    """Call OpenAI to generate a CIO-level master summary from the top candidates."""
+    try:
+        candidates_text = []
+        for cat, label in [("macd_golden", "动能爆发(金叉+放量)"), ("golden_dip", "黄金坑(极度超卖/强支撑)"), ("earnings_warning", "财报核弹警告(3天内)")]:
+            stocks = groups.get(cat, [])
+            if stocks:
+                candidates_text.append(f"[{label}]")
+                for s in stocks:
+                    one_liner = "暂无建议"
+                    for line in s.get("card", "").splitlines():
+                        if line.startswith("一句话："):
+                            one_liner = line.replace("一句话：", "").strip()
+                            break
+                    candidates_text.append(f"- {s['symbol']} (${s['indicators'].get('price', 0)}): 评分 {s.get('entry_score')}/10。AI分析：{one_liner}")
+        
+        if not candidates_text:
+            return "当前市场无明显异动信号，建议持仓观望，或关注Top 5核心票的均线支撑。"
+
+        prompt = (
+            "你是该量化基金的首席投资官 (CIO)。以下是今天系统在 50 只股票中筛选出的『最强异动信号』候选池：\n\n"
+            + "\n".join(candidates_text) +
+            f"\n\n时间语境：{session}\n"
+            "任务：请写一段 100 字左右的【CIO 终极结论】。\n"
+            "要求：\n"
+            "1. 语气专业、果断，极具战术指导性。\n"
+            "2. 从候选中挑选出你认为今天最值得出手（或最需要避险）的 1~3 只股票，说明核心原因（如：资金抢筹、超跌反弹、避开财报）。\n"
+            "3. 不要寒暄，直奔主题，纯文本输出（不要用 Markdown 星号或井号）。"
+        )
+        
+        client = _get_client()
+        resp = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": "你是量化基金首席投资官。"},
+                {"role": "user", "content": prompt}
+            ],
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception as e:
+        logger.error(f"CIO Summary generation failed: {e}")
+        return "CIO 决策引擎暂未响应，请参考下方量化雷达数据。"
+
+
 def build_daily_header(session_label: str) -> str:
 
     """Build the header line for the daily card message."""

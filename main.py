@@ -30,8 +30,8 @@ from config import WATCHLIST_FILE, OUTPUT_DIR
 from src.data_fetcher import fetch_ohlcv, fetch_info
 from src.indicators import compute_indicators, fibonacci_levels, pivot_points, extract_latest
 from src.news_fetcher import get_news, format_news_for_prompt
-from src.scorer import rank_stocks
-from src.card_generator import generate_card, generate_card_with_vision, build_daily_header
+from src.scorer import rank_stocks, categorize_stocks
+from src.card_generator import generate_card, generate_card_with_vision, build_daily_header, generate_cio_summary
 from src.chart_renderer import capture_screenshot
 from src.telegram_sender import send_message, send_photo
 
@@ -139,7 +139,34 @@ def build_full_message(ranked: list[dict], session: str) -> str:
 
 def build_summary_message(ranked: list[dict], session_label: str) -> str:
     header = build_daily_header(session_label)
-    lines = [header, "🔔 今日操作策略速览：\n"]
+    
+    # 1. Categorize stocks
+    groups = categorize_stocks(ranked)
+    
+    # 2. Generate CIO Briefing
+    cio_text = generate_cio_summary(groups, session_label)
+    
+    lines = [header, "🏆 首席投资官 (CIO) 决策", cio_text, "\n⚡ 量化异动雷达"]
+    
+    # Helper to render a group
+    def render_group(group_list, empty_msg):
+        if not group_list:
+            return f"  {empty_msg}"
+        out = []
+        for s in group_list:
+            price = s['indicators'].get('price', '?')
+            out.append(f"  ▸ {s['symbol']} (${price}) - 买点: {s.get('entry_score', 0)}")
+        return "\n".join(out)
+        
+    lines.append("📈 动能爆发 (金叉+放量):")
+    lines.append(render_group(groups["macd_golden"], "暂无符合条件的标的"))
+    lines.append("\n🎯 黄金坑 (超卖/强支撑):")
+    lines.append(render_group(groups["golden_dip"], "暂无符合条件的标的"))
+    lines.append("\n⚠️ 财报警告 (3天内):")
+    lines.append(render_group(groups["earnings_warning"], "暂无符合条件的标的"))
+
+    lines.append("\n" + "─" * 20)
+    lines.append("📋 全名单速览 (折叠/备查)")
 
     for i, stock in enumerate(ranked, 1):
         symbol = stock["symbol"]

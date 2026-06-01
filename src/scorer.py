@@ -137,3 +137,35 @@ def rank_stocks(stock_data: list[dict]) -> list[dict]:
 
     results.sort(key=lambda x: x["_sort_key"], reverse=True)
     return results
+
+
+def categorize_stocks(ranked: list[dict]) -> dict[str, list[dict]]:
+    """Group stocks into quantitative signal categories."""
+    groups = {
+        "macd_golden": [],
+        "golden_dip": [],
+        "earnings_warning": [],
+    }
+    for stock in ranked:
+        ind = stock.get("indicators", {})
+        info = stock.get("info", {})
+        
+        macd_hist = ind.get("macd_hist") or 0
+        prev_macd_hist = ind.get("prev_macd_hist") or 0
+        vol_ratio = ind.get("vol_ratio", 1.0)
+        rsi = ind.get("rsi", 50)
+        days_to_earnings = info.get("days_to_earnings")
+        
+        # 1. MACD Golden Cross + Volume
+        if macd_hist > 0 and prev_macd_hist <= 0 and vol_ratio > 1.2:
+            groups["macd_golden"].append(stock)
+            
+        # 2. Golden Dip
+        elif rsi < 35 or stock.get("entry_score", 0) >= 7.0:
+            groups["golden_dip"].append(stock)
+            
+        # 3. Earnings Warning
+        elif days_to_earnings is not None and 0 <= days_to_earnings <= 3:
+            groups["earnings_warning"].append(stock)
+            
+    return groups
