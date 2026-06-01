@@ -8,7 +8,7 @@ FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.5")
-OPENAI_MODEL_CHEAP = os.getenv("OPENAI_MODEL_CHEAP", "gpt-5.5-instant")
+OPENAI_MODEL_CHEAP = os.getenv("OPENAI_MODEL_CHEAP", "gpt-5.4-mini")
 TAX_RATE = float(os.getenv("TAX_RATE", "0.30"))
 
 WATCHLIST_FILE = os.path.join(os.path.dirname(__file__), "watchlist.txt")
