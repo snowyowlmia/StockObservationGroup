@@ -6,18 +6,18 @@ import os
 import base64
 import logging
 from datetime import datetime
-import anthropic
-from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, CLAUDE_MODEL_CHEAP, TAX_RATE
+import openai
+from config import OPENAI_API_KEY, OPENAI_MODEL, OPENAI_MODEL_CHEAP, TAX_RATE
 
 logger = logging.getLogger(__name__)
 
 _client = None
 
 
-def _get_client() -> anthropic.Anthropic:
+def _get_client() -> openai.OpenAI:
     global _client
     if _client is None:
-        _client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        _client = openai.OpenAI(api_key=OPENAI_API_KEY)
     return _client
 
 
@@ -225,14 +225,15 @@ def generate_card(stock: dict, use_cheap_model: bool = False, session: str = "cl
         system_prompt = SYSTEM_PROMPT.replace("{session_context}", session_context)
         prompt = _build_prompt(stock, session)
         client = _get_client()
-        model_to_use = CLAUDE_MODEL_CHEAP if use_cheap_model else CLAUDE_MODEL
-        resp = client.messages.create(
+        model_to_use = OPENAI_MODEL_CHEAP if use_cheap_model else OPENAI_MODEL
+        resp = client.chat.completions.create(
             model=model_to_use,
-            max_tokens=1200,
-            system=system_prompt,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ],
         )
-        return resp.content[0].text.strip()
+        return resp.choices[0].message.content.strip()
     except Exception as e:
         logger.error(f"Card generation failed for {stock['symbol']}: {e}")
         ind = stock["indicators"]
@@ -268,20 +269,17 @@ def generate_card_with_vision(stock: dict, image_path: str, session: str = "clos
         text_prompt += "\n\n【视觉校验要求】：同时参考上传的 TradingView 截图（其中包含 EMA20/50/200 均线、RSI、MACD指标）。比对给定的技术数据与图表形态。如果两者一致，请原样按照模板格式输出卡片；如果视觉图表显示存在明显的趋势背离、均线缠绕、MACD/RSI 拐点偏离或画线阻力支撑差错，请以图表视觉呈现为准修正卡片中『状态』、『买点波段』、『防守』与『一句话』的描述，并在相关部分点出视觉上看到的具体盘面细节（如：价格正处于斐波那契回撤阻力位，或K线出现长下影线等）。确保卡片文字与图片视觉内容相符。"
 
         client = _get_client()
-        resp = client.messages.create(
-            model=CLAUDE_MODEL,
-            max_tokens=1200,
-            system=system_prompt,
+        resp = client.chat.completions.create(
+            model=OPENAI_MODEL,
             messages=[
+                {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
                     "content": [
                         {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "image/png",
-                                "data": image_data
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{image_data}"
                             }
                         },
                         {
@@ -292,7 +290,7 @@ def generate_card_with_vision(stock: dict, image_path: str, session: str = "clos
                 }
             ]
         )
-        return resp.content[0].text.strip()
+        return resp.choices[0].message.content.strip()
     except Exception as e:
         logger.error(f"Card generation with vision failed for {stock['symbol']}: {e}. Falling back to text-only.")
         return generate_card(stock)
