@@ -43,9 +43,10 @@ logging.basicConfig(
 logger = logging.getLogger("main")
 
 SESSION_LABELS = {
-    "open": "09:45 ET 开盘分析",
-    "mid": "13:00 ET 盘中分析",
-    "close": "15:45 ET 收盘前分析",
+    "open": "10:00 ET 开盘异动扫描",
+    "mid": "13:00 ET 盘中趋势确认",
+    "close": "15:45 ET 尾盘绝杀抢筹",
+    "post": "20:00 ET 盘后复盘总结",
 }
 
 ET = pytz.timezone("America/New_York")
@@ -54,12 +55,14 @@ ET = pytz.timezone("America/New_York")
 def detect_session() -> str:
     now_et = datetime.now(ET)
     hour = now_et.hour
-    if hour < 12:
+    if hour < 11:
         return "open"
     elif hour < 14:
         return "mid"
-    else:
+    elif hour < 17:
         return "close"
+    else:
+        return "post"
 
 
 def load_watchlist() -> list[dict]:
@@ -173,7 +176,7 @@ def save_output(message: str, session: str) -> None:
 
 def main():
     parser = argparse.ArgumentParser(description="Lulu AI Stock Card Bot")
-    parser.add_argument("--session", choices=["open", "mid", "close"], default=None)
+    parser.add_argument("--session", choices=["open", "mid", "close", "post"], default=None)
     parser.add_argument("--dry-run", action="store_true", help="Print to stdout, skip Telegram")
     parser.add_argument("--screenshot", action="store_true", help="Generate TradingView screenshots and run AI vision check")
     parser.add_argument("--symbol", type=str, help="Analyze only a specific symbol (e.g. VRT)")
@@ -216,13 +219,13 @@ def main():
             exchange = stock.get("info", {}).get("exchange", "")
             ok = capture_screenshot(stock["symbol"], exchange, shot_path)
             if ok:
-                stock["card"] = generate_card_with_vision(stock, shot_path)
+                stock["card"] = generate_card_with_vision(stock, shot_path, session=session)
                 stock["shot_path"] = shot_path
             else:
                 logger.warning(f"Screenshot failed for {stock['symbol']}, falling back to text-only card.")
-                stock["card"] = generate_card(stock, use_cheap_model=use_cheap)
+                stock["card"] = generate_card(stock, use_cheap_model=use_cheap, session=session)
         else:
-            stock["card"] = generate_card(stock, use_cheap_model=use_cheap)
+            stock["card"] = generate_card(stock, use_cheap_model=use_cheap, session=session)
         logger.info(f"  ✓ {stock['symbol']} (Top 5: {is_top_5})")
 
     # Assemble full message

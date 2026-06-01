@@ -57,10 +57,12 @@ Volume：[成交量状态及含义]
 防守：[原本的止损位和触发条件]
 一句话：[最终操作建议，必须包含具体挂单或防守的价格数字，如：挂单 $200.40 (EMA50)]
 
-【特别注意】：如果技术评分中的『当前买点初步评分』大于等于 6.0 分，意味着系统量化判定目前是一个极佳的买入窗口（如深度回踩均线或极度超卖）。此时，你的『明天操作』和『一句话』必须明确给出积极的【买入/建仓】建议，不要一味劝退或观望！"""
+【特别注意】：
+1. 如果技术评分中的『当前买点初步评分』大于等于 6.0 分，意味着系统量化判定目前是一个极佳的买入窗口（如深度回踩均线或极度超卖）。此时，你的『明天操作』和『一句话』必须明确给出积极的【买入/建仓】建议，不要一味劝退或观望！
+2. 当前发送时间语境为：{session_context}。请根据时间点微调你的『明天操作』标题（例如盘后改为“明天挂单计划”，盘中改为“尾盘抢筹计划”等）。"""
 
 
-def _build_prompt(stock: dict) -> str:
+def _build_prompt(stock: dict, session: str = "close") -> str:
     ind = stock["indicators"]
     fib = stock.get("fib", {})
     pivots = stock.get("pivots", {})
@@ -210,16 +212,24 @@ Pivot Points（前一交易日）：
 请输出该股的 Lulu AI Stock Card，严格按照系统提示中的格式模板。"""
 
 
-def generate_card(stock: dict, use_cheap_model: bool = False) -> str:
+def generate_card(stock: dict, use_cheap_model: bool = False, session: str = "close") -> str:
     """Call Claude and return the formatted card text."""
     try:
-        prompt = _build_prompt(stock)
+        session_context = {
+            "open": "开盘异动扫描 (10:00 ET)，早盘波动剧烈，寻找日内最佳入场点",
+            "mid": "盘中趋势确认 (13:00 ET)，趋势趋稳，排查假突破或洗盘",
+            "close": "尾盘绝杀抢筹 (15:45 ET)，日内方向已定，是波段建仓的最重要时刻",
+            "post": "盘后复盘总结 (20:00 ET)，总结当日走势与盘后新闻，制定明天的挂单计划"
+        }.get(session, "常规分析")
+        
+        system_prompt = SYSTEM_PROMPT.replace("{session_context}", session_context)
+        prompt = _build_prompt(stock, session)
         client = _get_client()
         model_to_use = CLAUDE_MODEL_CHEAP if use_cheap_model else CLAUDE_MODEL
         resp = client.messages.create(
             model=model_to_use,
             max_tokens=1200,
-            system=SYSTEM_PROMPT,
+            system=system_prompt,
             messages=[{"role": "user", "content": prompt}],
         )
         return resp.content[0].text.strip()
@@ -234,17 +244,26 @@ def generate_card(stock: dict, use_cheap_model: bool = False) -> str:
 
 
 
-def generate_card_with_vision(stock: dict, image_path: str) -> str:
+def generate_card_with_vision(stock: dict, image_path: str, session: str = "close") -> str:
     """Call Claude with both the stock data and a screenshot of the chart."""
     try:
         if not os.path.exists(image_path):
             logger.error(f"Screenshot path does not exist: {image_path}. Falling back to text-only.")
-            return generate_card(stock)
+            return generate_card(stock, session=session)
             
         with open(image_path, "rb") as image_file:
             image_data = base64.b64encode(image_file.read()).decode("utf-8")
             
-        text_prompt = _build_prompt(stock)
+        session_context = {
+            "open": "开盘异动扫描 (10:00 ET)，早盘波动剧烈，寻找日内最佳入场点",
+            "mid": "盘中趋势确认 (13:00 ET)，趋势趋稳，排查假突破或洗盘",
+            "close": "尾盘绝杀抢筹 (15:45 ET)，日内方向已定，是波段建仓的最重要时刻",
+            "post": "盘后复盘总结 (20:00 ET)，总结当日走势与盘后新闻，制定明天的挂单计划"
+        }.get(session, "常规分析")
+        
+        system_prompt = SYSTEM_PROMPT.replace("{session_context}", session_context)
+        
+        text_prompt = _build_prompt(stock, session)
         # Add visual check instructions to prompt
         text_prompt += "\n\n【视觉校验要求】：同时参考上传的 TradingView 截图（其中包含 EMA20/50/200 均线、RSI、MACD指标）。比对给定的技术数据与图表形态。如果两者一致，请原样按照模板格式输出卡片；如果视觉图表显示存在明显的趋势背离、均线缠绕、MACD/RSI 拐点偏离或画线阻力支撑差错，请以图表视觉呈现为准修正卡片中『状态』、『买点波段』、『防守』与『一句话』的描述，并在相关部分点出视觉上看到的具体盘面细节（如：价格正处于斐波那契回撤阻力位，或K线出现长下影线等）。确保卡片文字与图片视觉内容相符。"
 
@@ -252,7 +271,7 @@ def generate_card_with_vision(stock: dict, image_path: str) -> str:
         resp = client.messages.create(
             model=CLAUDE_MODEL,
             max_tokens=1200,
-            system=SYSTEM_PROMPT,
+            system=system_prompt,
             messages=[
                 {
                     "role": "user",
